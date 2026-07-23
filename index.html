@@ -265,9 +265,12 @@
 
             // Normalize data into an array of row objects to search through
             let rows = [];
+            
+            // Check if data is directly an array (Metabase JSON export format)
             if (Array.isArray(data)) {
                 rows = data;
             } else if (data.data && Array.isArray(data.data.rows)) {
+                // If it's wrapped in a data object
                 rows = data.data.rows;
             } else if (typeof data === 'object') {
                 rows = [data];
@@ -276,27 +279,26 @@
             for (const row of rows) {
                 if (!row || typeof row !== 'object') continue;
 
-                // 1. Check for exact column mapping from your screenshot: `spin_url`
+                // 1. Check for exact column mapping: `spin_url`
                 if (row.spin_url && typeof row.spin_url === 'string' && row.spin_url.startsWith('http')) {
                     return row.spin_url.trim();
                 }
 
-                // 2. Check for exact column mapping from your screenshot: `mediaId`
+                // 2. Check for exact column mapping: `mediaId`
                 if (row.mediaId && typeof row.mediaId === 'string' && row.mediaId.length >= 20) {
                     return `https://assets.spyne.ai/360?version=v3&mediaId=${row.mediaId}&spin=1`;
                 }
                 
-                // Secondary fallbacks for other column names
+                // Fallbacks...
                 if (row.media_id && typeof row.media_id === 'string' && row.media_id.length >= 20) {
                     return `https://assets.spyne.ai/360?version=v3&mediaId=${row.media_id}&spin=1`;
                 }
 
-                // If data is just a raw array of cells (Metabase format)
+                // If data is just a raw array of cells (Metabase raw format)
                 if (Array.isArray(row)) {
                     for (const cell of row) {
                         if (typeof cell === 'string') {
                             if (cell.includes('assets.spyne.ai/360')) return cell.trim();
-                            // If a 24 character Media ID string exists in the row
                             if (/^[a-fA-F0-9]{24}$/.test(cell)) {
                                 return `https://assets.spyne.ai/360?version=v3&mediaId=${cell}&spin=1`;
                             }
