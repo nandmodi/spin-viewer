@@ -121,9 +121,7 @@
     </main>
 
     <script>
-        const CARD_UUID = "4584f6d4-0394-4c30-ae53-dbbc1acfb88c";
-        const METABASE_BASE_URL = "https://metabase.spyne.ai";
-
+        // Constants moved to backend (api/fetch-spin.js), no longer exposed on frontend.
         const skuInput = document.getElementById('skuInput');
         const clearBtn = document.getElementById('clearBtn');
         const urlBanner = document.getElementById('urlBanner');
@@ -196,119 +194,6 @@
             }
         }
 
-        async function fetchMetabaseData(sku) {
-            // Build Metabase parameters query JSON payloads for both sku_input and sku_id
-            const paramObjSkuInput = [
-                {
-                    type: "category",
-                    target: ["variable", ["template-tag", "sku_input"]],
-                    value: sku
-                }
-            ];
-            const paramObjSkuId = [
-                {
-                    type: "category",
-                    target: ["variable", ["template-tag", "sku_id"]],
-                    value: sku
-                }
-            ];
-
-            const postUrl = `${METABASE_BASE_URL}/api/public/card/${CARD_UUID}/query`;
-            const getJsonUrlSkuInput = `${METABASE_BASE_URL}/public/question/${CARD_UUID}.json?parameters=${encodeURIComponent(JSON.stringify(paramObjSkuInput))}`;
-            const getJsonUrlSkuId = `${METABASE_BASE_URL}/public/question/${CARD_UUID}.json?parameters=${encodeURIComponent(JSON.stringify(paramObjSkuId))}`;
-
-            // Helper to check if payload contains non-empty rows or valid spin url
-            function hasDataRows(data) {
-                if (!data) return false;
-                if (Array.isArray(data) && data.length > 0) return true;
-                if (data.data && Array.isArray(data.data.rows) && data.data.rows.length > 0) return true;
-                if (typeof data === 'object' && extractSpinUrl(data) !== null) return true;
-                return false;
-            }
-
-            // Helper for fast fetch with short timeout (2.5s) and valid row checking
-            async function quickFetch(url, options = {}, ms = 2500) {
-                const controller = new AbortController();
-                const id = setTimeout(() => controller.abort(), ms);
-                try {
-                    const response = await fetch(url, { ...options, signal: controller.signal });
-                    clearTimeout(id);
-                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                    const data = await response.json();
-                    if (data && hasDataRows(data)) return data;
-                    throw new Error("Empty or zero-row response");
-                } catch (err) {
-                    clearTimeout(id);
-                    throw err;
-                }
-            }
-
-            // Helper for AllOrigins JSON wrapper parsing
-            async function quickFetchAllOrigins(targetUrl, ms = 2500) {
-                const json = await quickFetch(`https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`, {}, ms);
-                if (json && json.contents) {
-                    const data = typeof json.contents === 'string' ? JSON.parse(json.contents) : json.contents;
-                    if (data && hasDataRows(data)) return data;
-                }
-                throw new Error("Invalid AllOrigins payload");
-            }
-
-            // Fire ALL requests concurrently in parallel and return as soon as the FASTEST one with valid data succeeds
-            const candidatePromises = [
-                // 1. Direct POST queries
-                quickFetch(postUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ parameters: paramObjSkuInput })
-                }),
-                quickFetch(postUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ parameters: paramObjSkuId })
-                }),
-
-                // 2. Corsproxy POST
-                quickFetch(`https://corsproxy.io/?${encodeURIComponent(postUrl)}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ parameters: paramObjSkuInput })
-                }),
-
-                // 3. Direct GET queries
-                quickFetch(getJsonUrlSkuInput),
-                quickFetch(getJsonUrlSkuId),
-
-                // 4. Corsproxy GET queries
-                quickFetch(`https://corsproxy.io/?${encodeURIComponent(getJsonUrlSkuInput)}`),
-                quickFetch(`https://corsproxy.io/?${encodeURIComponent(getJsonUrlSkuId)}`),
-
-                // 5. AllOrigins RAW GET query
-                quickFetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(getJsonUrlSkuInput)}`),
-
-                // 6. AllOrigins Wrapped GET query
-                quickFetchAllOrigins(getJsonUrlSkuInput)
-            ];
-
-            try {
-                if (Promise.any) {
-                    return await Promise.any(candidatePromises);
-                } else {
-                    return await new Promise((resolve, reject) => {
-                        let failedCount = 0;
-                        candidatePromises.forEach(p => {
-                            p.then(resolve).catch(() => {
-                                failedCount++;
-                                if (failedCount === candidatePromises.length) reject(new Error("All parallel requests failed"));
-                            });
-                        });
-                    });
-                }
-            } catch (err) {
-                console.warn("Parallel fetch completed with no successful response:", err);
-                return null;
-            }
-        }
-
         async function runQueryAndFetchSpin() {
             const sku = skuInput.value.trim();
             if (!sku) {
@@ -324,7 +209,7 @@
 
             updateUrlParam(sku);
 
-            // Direct URL Input
+            // 1. Direct URL Input
             if (sku.startsWith('http://') || sku.startsWith('https://') || sku.includes('assets.spyne.ai')) {
                 const directUrl = sku.startsWith('http') ? sku : `https://${sku}`;
                 showSpinUrlBanner(directUrl);
@@ -334,7 +219,7 @@
                 return;
             }
 
-            // Direct Media ID Input (24-character hex ID, e.g. 69847cb268ed57c8088c38c5)
+            // 2. Direct Media ID Input (24-character hex ID)
             if (/^[a-fA-F0-9]{24}$/.test(sku)) {
                 const constructedUrl = `https://assets.spyne.ai/360?version=v3&mediaId=${sku}&spin=1`;
                 showSpinUrlBanner(constructedUrl);
@@ -344,92 +229,79 @@
                 return;
             }
 
-            // Query Metabase backend for SKU Input to retrieve spin_url
-            setStatus('loading', 'Executing query on backend...', `Running Metabase query for SKU: ${sku}`);
-
+            // 3. Query our own Vercel Serverless API Backend!
+            setStatus('loading', 'Executing secure backend query...', `Fetching via Vercel...`);
+            
             try {
-                const data = await fetchMetabaseData(sku);
-                const spinUrl = extractSpinUrl(data);
-
-                if (!spinUrl) {
-                    setStatus('error', `No 360 spin URL found for "${sku}"`, 'The query completed but returned no matching spin URL for this SKU Input.');
-                    return;
+                // We call the serverless function we created in /api/fetch-spin.js
+                // This request is internal (same domain), so the browser doesn't block it with CORS!
+                const res = await fetch(`/api/fetch-spin?sku=${encodeURIComponent(sku)}`);
+                
+                if (!res.ok) {
+                    throw new Error(`Server returned HTTP ${res.status}`);
                 }
-
-                showSpinUrlBanner(spinUrl);
-                setStatus('loading', 'Opening 360° Spin URL...', spinUrl);
-                spinIframe.src = spinUrl;
-                spinIframe.classList.remove('hidden');
-
+                
+                const data = await res.json();
+                
+                // Extract the URL using the existing robust logic
+                const urlFound = extractSpinUrl(data);
+                
+                if (urlFound) {
+                    showSpinUrlBanner(urlFound);
+                    setStatus('loading', 'Opening 360° Spin URL...', urlFound);
+                    spinIframe.src = urlFound;
+                    spinIframe.classList.remove('hidden');
+                } else {
+                    throw new Error('Valid spin_url not found in payload');
+                }
             } catch (err) {
-                console.warn("Query failed:", err);
-                setStatus('error', `Unable to fetch spin URL for "${sku}"`, 'CORS/Network restriction encountered on hosted domain. Try entering the 24-character Media ID or direct Spin URL.');
+                console.error("Vercel Backend Error:", err);
+                setStatus('error', `No 360 spin URL found for "${sku}"`, 'The query timed out, failed, or returned no matches. Check the SKU.');
             }
         }
 
         function extractSpinUrl(data) {
             if (!data) return null;
 
-            // 1. Array of objects (from .json endpoints)
-            if (Array.isArray(data) && data.length > 0) {
-                for (const row of data) {
-                    if (typeof row === 'object' && row !== null) {
-                        for (const key of ['spin_url', 'spin_link', 'url', 'spin', '360_url', 'iframe_url', 'link']) {
-                            if (row[key] && typeof row[key] === 'string' && row[key].startsWith('http')) {
-                                return row[key].trim();
-                            }
-                        }
-                        if (row.mediaId || row.media_id) {
-                            const mId = row.mediaId || row.media_id;
-                            return `https://assets.spyne.ai/360?version=v3&mediaId=${mId}&spin=1`;
-                        }
-                    } else if (typeof row === 'string' && row.startsWith('http')) {
-                        return row.trim();
-                    }
-                }
+            // Normalize data into an array of row objects to search through
+            let rows = [];
+            if (Array.isArray(data)) {
+                rows = data;
+            } else if (data.data && Array.isArray(data.data.rows)) {
+                rows = data.data.rows;
+            } else if (typeof data === 'object') {
+                rows = [data];
             }
 
-            // 2. Metabase Card Query structure { data: { rows: [[...]], cols: [...] } }
-            if (data.data && Array.isArray(data.data.rows) && data.data.rows.length > 0) {
-                const firstRow = data.data.rows[0];
-                if (Array.isArray(firstRow)) {
-                    if (Array.isArray(data.data.cols)) {
-                        const spinColIdx = data.data.cols.findIndex(c => c.name && c.name.toLowerCase().includes('spin'));
-                        if (spinColIdx !== -1 && firstRow[spinColIdx]) {
-                            const val = String(firstRow[spinColIdx]).trim();
-                            if (val.startsWith('http')) return val;
-                        }
-                        const mediaColIdx = data.data.cols.findIndex(c => c.name && (c.name.toLowerCase().includes('media') || c.name.toLowerCase().includes('id')));
-                        if (mediaColIdx !== -1 && firstRow[mediaColIdx]) {
-                            const val = String(firstRow[mediaColIdx]).trim();
-                            if (val.length === 24) {
-                                return `https://assets.spyne.ai/360?version=v3&mediaId=${val}&spin=1`;
-                            }
-                        }
-                    }
-                    for (const cell of firstRow) {
+            for (const row of rows) {
+                if (!row || typeof row !== 'object') continue;
+
+                // 1. Check for exact column mapping from your screenshot: `spin_url`
+                if (row.spin_url && typeof row.spin_url === 'string' && row.spin_url.startsWith('http')) {
+                    return row.spin_url.trim();
+                }
+
+                // 2. Check for exact column mapping from your screenshot: `mediaId`
+                if (row.mediaId && typeof row.mediaId === 'string' && row.mediaId.length >= 20) {
+                    return `https://assets.spyne.ai/360?version=v3&mediaId=${row.mediaId}&spin=1`;
+                }
+                
+                // Secondary fallbacks for other column names
+                if (row.media_id && typeof row.media_id === 'string' && row.media_id.length >= 20) {
+                    return `https://assets.spyne.ai/360?version=v3&mediaId=${row.media_id}&spin=1`;
+                }
+
+                // If data is just a raw array of cells (Metabase format)
+                if (Array.isArray(row)) {
+                    for (const cell of row) {
                         if (typeof cell === 'string') {
-                            const val = cell.trim();
-                            if (val.startsWith('http://') || val.startsWith('https://')) {
-                                return val;
-                            }
-                            if (/^[a-fA-F0-9]{24}$/.test(val)) {
-                                return `https://assets.spyne.ai/360?version=v3&mediaId=${val}&spin=1`;
+                            if (cell.includes('assets.spyne.ai/360')) return cell.trim();
+                            // If a 24 character Media ID string exists in the row
+                            if (/^[a-fA-F0-9]{24}$/.test(cell)) {
+                                return `https://assets.spyne.ai/360?version=v3&mediaId=${cell}&spin=1`;
                             }
                         }
                     }
-                }
-            }
-
-            // 3. Direct Object
-            if (typeof data === 'object') {
-                for (const key of ['spin_url', 'spin_link', 'url', 'spin', '360_url']) {
-                    if (data[key] && typeof data[key] === 'string' && data[key].startsWith('http')) {
-                        return data[key].trim();
-                    }
-                }
-                if (data.mediaId || data.media_id) {
-                    return `https://assets.spyne.ai/360?version=v3&mediaId=${data.mediaId || data.media_id}&spin=1`;
                 }
             }
 
