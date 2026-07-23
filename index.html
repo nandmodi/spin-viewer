@@ -1,312 +1,424 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="h-full bg-slate-950 text-slate-100">
 <head>
-  <meta charset="UTF-8" />
-  <title>QC Review Dashboard</title>
-  <link rel="icon" href="https://spyne-prod-ai.s3.us-east-1.amazonaws.com/ai-dataset/2025/logo/unnamed.png" type="image/x-icon" />
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
-  <style>
-    body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      margin: 0;
-      padding: 0;
-      background: #f4f7fa;
-      color: #333;
-    }
-
-    header {
-      background: #0057a3;
-      color: white;
-      padding: 0;
-      text-align: center;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    }
-
-    header h1 {
-      margin: 10px 0;
-      font-size: 1.8em;
-    }
-
-    .container {
-      display: none;
-      justify-content: space-between;
-      align-items: flex-start;
-      padding: 1px;
-      gap: 1px;
-    }
-
-    .image-box {
-      flex: 1;
-      text-align: center;
-    }
-
-    .image-box img {
-      width: 100%;
-      height: auto;
-      max-height: 600px;
-      object-fit: contain;
-      margin-bottom: 5px;
-    }
-
-    .meta {
-      font-size: 0.95em;
-      color: #666;
-    }
-
-    .controls {
-      display: none;
-      margin: 30px auto;
-      text-align: center;
-    }
-
-    .status-group {
-      display: flex;
-      justify-content: center;
-      gap: 20px;
-      margin-bottom: 20px;
-      flex-wrap: wrap;
-    }
-
-    .status-group label {
-      font-size: 1rem;
-      background: #e9f0f7;
-      padding: 10px 20px;
-      border-radius: 6px;
-      cursor: pointer;
-    }
-
-    .status-group input[type="radio"] {
-      margin-right: 8px;
-    }
-
-    button {
-      padding: 12px 25px;
-      font-size: 1rem;
-      background-color: #0073e6;
-      color: white;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-    }
-
-    .progress {
-      text-align: center;
-      margin-top: 15px;
-      font-size: 1.1rem;
-      color: #444;
-    }
-
-    iframe {
-      display: none;
-    }
-
-    #loginScreen {
-      text-align: center;
-      margin-top: 50px;
-    }
-
-    #loginScreen select {
-      padding: 10px;
-      font-size: 1em;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>360° Spin Viewer</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 9999px; }
+    </style>
 </head>
-<body>
+<body class="h-full flex flex-col m-0 p-0 overflow-hidden bg-slate-950 antialiased">
 
-<header>
-  <h1>Image QC Review Dashboard</h1>
-</header>
+    <!-- Minimal Header with SKU Input Box -->
+    <header class="w-full bg-slate-900 border-b border-slate-800 p-3 sm:p-4 shrink-0 shadow-lg z-20">
+        <div class="max-w-4xl mx-auto flex items-center gap-2 sm:gap-3">
+            <div class="relative flex-1">
+                <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                    <i class="fa-solid fa-magnifying-glass text-blue-400 text-sm"></i>
+                </div>
+                <input 
+                    type="text" 
+                    id="skuInput" 
+                    placeholder="Enter SKU Input (e.g. 2HGFE4F88TH316229)..." 
+                    class="w-full bg-slate-950 border border-slate-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-white text-sm rounded-xl pl-10 pr-10 py-2.5 transition-all font-mono outline-none"
+                />
+                <button 
+                    onclick="clearInput()" 
+                    id="clearBtn" 
+                    class="hidden absolute inset-y-0 right-0 pr-3 flex items-center text-slate-500 hover:text-slate-300 transition-colors"
+                >
+                    <i class="fa-solid fa-circle-xmark text-sm"></i>
+                </button>
+            </div>
 
-<p id="progressText" class="progress"></p>
+            <button 
+                onclick="runQueryAndFetchSpin()" 
+                id="searchBtn"
+                class="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-medium text-sm rounded-xl shadow-md transition-all flex items-center gap-2 shrink-0"
+            >
+                <i class="fa-solid fa-play text-xs"></i>
+                <span class="hidden sm:inline">Fetch Spin</span>
+            </button>
+        </div>
+    </header>
 
-<div id="loginScreen">
-  <h2>Login to Start QC Review</h2>
-  <select id="emailInput">
-    <option value="" disabled selected>Select your email ID</option>
-    <option value="samir.ansari@spyne.co.in">samir.ansari@spyne.co.in</option>
-    <option value="ajay.prajapati@spyne.co.in">ajay.prajapati@spyne.co.in</option>
-    <option value="sneha.swami@spyne.co.in">sneha.swami@spyne.co.in</option>
-    <option value="rahul.kumar1@spyne.co.in">rahul.kumar1@spyne.co.in</option>
-    <option value="dinesh.mishra@spyne.co.in">dinesh.mishra@spyne.co.in</option>
-    <option value="chhotu.singh@spyne.co.in">chhotu.singh@spyne.co.in</option>
-    <option value="bashishth.singh@spyne.co.in">bashishth.singh@spyne.co.in</option>
-    <option value="kartik.kumar@spyne.co.in">kartik.kumar@spyne.co.in</option>
-    <option value="dharmendra.kumar@spyne.co.in">dharmendra.kumar@spyne.co.in</option>
-    <option value="rambha.prajapati@spyne.co.in">rambha.prajapati@spyne.co.in</option>
-    <option value="raushan.kumar1@spyne.co.in">raushan.kumar1@spyne.co.in</option>
-    <option value="pradeep.singh@spyne.co.in">pradeep.singh@spyne.co.in</option>
-    <option value="kavi.singh@spyne.co.in">kavi.singh@spyne.co.in</option>
-    <option value="vikas.gupta@spyne.co.in">vikas.gupta@spyne.co.in</option>
-    <option value="rahul.ranjan@spyne.co.in">rahul.ranjan@spyne.co.in</option>
-    <option value="rahul.ranjan@spyne.co.in">rahul.ranjan@spyne.co.in</option>
-    <option value="ankesh.raj@spyne.co.in">ankesh.raj@spyne.co.in</option>
-    <option value="mukesh.kholi@spyne.co.in">mukesh.kholi@spyne.co.in</option>
-    <option value="manoj.punn@spyne.co.in">manoj.punn@spyne.co.in</option>
-    <option value="bharat.bhushan@spyne.co.in">bharat.bhushan@spyne.co.in</option>
-    <option value="lalit.shukla@spyne.co.in">lalit.shukla@spyne.co.in</option>
-    <!-- Add more emails here -->
-  </select>
-  <br><br>
-  <button onclick="login()">Start Review</button>
-</div>
+    <!-- Clickable Spin URL Banner (Visible when URL is fetched) -->
+    <div id="urlBanner" class="hidden w-full bg-slate-900/90 border-b border-slate-800 px-3 py-2 shrink-0 z-10 transition-all">
+        <div class="max-w-4xl mx-auto flex items-center justify-between gap-3 text-xs">
+            <div class="flex items-center gap-2 min-w-0 flex-1">
+                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium shrink-0">
+                    <i class="fa-solid fa-link text-[10px]"></i> Spin URL
+                </span>
+                <!-- Clickable Link to URL -->
+                <a 
+                    id="spinUrlLink" 
+                    href="#" 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    class="text-blue-400 hover:text-blue-300 underline font-mono truncate transition-colors"
+                    title="Click to open spin URL in new tab"
+                >
+                    <!-- Populated dynamically -->
+                </a>
+            </div>
 
-<div class="container" id="imageContainer">
-  <div class="image-box">
-    <h3>Input Image</h3>
-    <img id="inputImg" loading="lazy" alt="Input Image">
-    <div class="meta">Image ID: <span id="imgId">-</span></div>
-  </div>
-  <div class="image-box">
-    <h3>Output Image</h3>
-    <img id="outputImg" loading="lazy" alt="Output Image">
-    <div class="meta">SKU ID: <span id="skuId">-</span></div>
-  </div>
-</div>
+            <div class="flex items-center gap-2 shrink-0">
+                <button 
+                    onclick="copySpinUrl()" 
+                    id="copyBtn" 
+                    class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 transition-colors flex items-center gap-1.5"
+                    title="Copy URL to clipboard"
+                >
+                    <i class="fa-regular fa-copy text-[11px]"></i>
+                    <span class="hidden sm:inline">Copy</span>
+                </button>
+                <a 
+                    id="openTabBtn" 
+                    href="#" 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    class="px-2.5 py-1 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 rounded-lg border border-blue-500/30 transition-colors flex items-center gap-1.5"
+                    title="Open in new window"
+                >
+                    <i class="fa-solid fa-arrow-up-right-from-square text-[11px]"></i>
+                    <span class="hidden sm:inline">Open URL</span>
+                </a>
+            </div>
+        </div>
+    </div>
 
-<div class="controls" id="controlPanel">
-  <div class="status-group">
-    <label><input type="radio" name="status" value="Done">1 - Done</label>
-    <label><input type="radio" name="status" value="Cropped">2 - Cropped</label>
-    <label><input type="radio" name="status" value="Marketing Material">3 - Marketing Material</label>
-    <label><input type="radio" name="status" value="Banner">4 - Banner</label>
-    <label><input type="radio" name="status" value="Vehicle Overlapped">5 - Vehicle Overlapped</label>
-    <label><input type="radio" name="status" value="Editing">6 - Editing</label>
-  </div>
-  <button onclick="submitForm()">Next</button>
-</div>
+    <!-- Main Frame Viewport -->
+    <main class="flex-1 w-full h-full relative bg-slate-950 flex items-center justify-center overflow-hidden">
+        
+        <!-- Status Overlay (Idle / Loading / Error) -->
+        <div id="statusState" class="absolute inset-0 bg-slate-950 z-10 flex flex-col items-center justify-center gap-3 p-6 text-center">
+            <div id="statusIcon" class="w-12 h-12 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-500">
+                <i class="fa-solid fa-rotate text-xl"></i>
+            </div>
+            <div id="statusTitle" class="text-sm font-medium text-slate-300">Enter a SKU Input above to load 360° Spin</div>
+            <div id="statusSubtitle" class="text-xs text-slate-500 max-w-sm hidden"></div>
+            <button id="retryBtn" onclick="runQueryAndFetchSpin()" class="hidden mt-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded-lg transition-colors">
+                <i class="fa-solid fa-rotate-right mr-1.5"></i> Try Again
+            </button>
+        </div>
 
-<iframe id="hiddenSubmitFrame" name="hiddenSubmitFrame"></iframe>
+        <!-- Target Spin iFrame -->
+        <iframe 
+            id="spinIframe" 
+            class="hidden w-full h-full border-0" 
+            allowfullscreen 
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        ></iframe>
+    </main>
 
-<script>
-  const csvUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR716B7XHlwoRSpJvVcztuKb4MJAGZpIosbhmhPXQKieucfj0MwFYhGU4zz7kpPz2foWNA5Lk82P1Nv/pub?gid=0&single=true&output=csv";
-  let data = [];
-  let currentIndex = 0;
-  let userEmail = "";
+    <script>
+        const CARD_UUID = "4584f6d4-0394-4c30-ae53-dbbc1acfb88c";
+        const METABASE_BASE_URL = "https://metabase.spyne.ai";
 
-  function login() {
-    const emailInput = document.getElementById("emailInput");
-    userEmail = emailInput.value.trim();
+        const skuInput = document.getElementById('skuInput');
+        const clearBtn = document.getElementById('clearBtn');
+        const urlBanner = document.getElementById('urlBanner');
+        const spinUrlLink = document.getElementById('spinUrlLink');
+        const openTabBtn = document.getElementById('openTabBtn');
+        const spinIframe = document.getElementById('spinIframe');
+        const statusState = document.getElementById('statusState');
+        const statusIcon = document.getElementById('statusIcon');
+        const statusTitle = document.getElementById('statusTitle');
+        const statusSubtitle = document.getElementById('statusSubtitle');
+        const retryBtn = document.getElementById('retryBtn');
 
-    if (!userEmail || !userEmail.includes("@")) {
-      alert("Please select a valid email ID.");
-      return;
-    }
+        let currentFetchedUrl = '';
 
-    document.getElementById("loginScreen").style.display = "none";
-    document.getElementById("progressText").innerText = "📦 Loading data...";
-    loadCSVData();
-  }
+        document.addEventListener('DOMContentLoaded', () => {
+            spinIframe.addEventListener('load', handleIframeLoad);
+            skuInput.addEventListener('input', toggleClearBtn);
+            skuInput.addEventListener('keyup', (e) => {
+                if (e.key === 'Enter') runQueryAndFetchSpin();
+            });
 
-  function loadCSVData() {
-    Papa.parse(csvUrl, {
-      download: true,
-      header: true,
-      complete: function(results) {
-        data = results.data.filter(row => {
-          const status = (row.status || '').trim().toLowerCase();
-          return !["done", "cropped", "marketing material", "banner", "vehicle overlapped", "editing"].includes(status);
+            // Read URL parameter if available
+            const params = new URLSearchParams(window.location.search);
+            const initialSku = params.get('sku_input') || params.get('sku_id') || params.get('sku') || params.get('mediaId');
+            if (initialSku) {
+                skuInput.value = initialSku;
+                toggleClearBtn();
+                runQueryAndFetchSpin();
+            }
         });
 
-        if (data.length === 0) {
-          document.getElementById("progressText").innerText = "✅ All SKUs are already reviewed. No SKU left.";
-        } else {
-          document.getElementById("imageContainer").style.display = "flex";
-          document.getElementById("controlPanel").style.display = "block";
-          document.getElementById("progressText").innerText = "";
-          showImage();
-          preloadNextImages();
+        function toggleClearBtn() {
+            if (skuInput.value.trim().length > 0) {
+                clearBtn.classList.remove('hidden');
+            } else {
+                clearBtn.classList.add('hidden');
+            }
         }
-      }
-    });
-  }
 
-  function showImage() {
-    if (currentIndex >= data.length) {
-      document.getElementById("progressText").innerText = `🎉 You reviewed ${data.length} SKUs!`;
-      document.getElementById("imageContainer").style.display = "none";
-      document.getElementById("controlPanel").style.display = "none";
-      return;
-    }
+        function clearInput() {
+            skuInput.value = '';
+            toggleClearBtn();
+            urlBanner.classList.add('hidden');
+            skuInput.focus();
+        }
 
-    const row = data[currentIndex];
-    document.getElementById("inputImg").src = row["input_image_hres_url"];
-    document.getElementById("outputImg").src = row["output_image_hres_url"];
-    document.getElementById("imgId").innerText = row["image_id"];
-    document.getElementById("skuId").innerText = row["sku_id"];
-    preloadNextImages();
-  }
+        function setStatus(type, title, subtitle = '') {
+            statusState.classList.remove('hidden');
+            statusSubtitle.classList.add('hidden');
+            retryBtn.classList.add('hidden');
 
-  function submitForm() {
-    if (!userEmail || !userEmail.includes("@")) {
-      alert("Login required. Please refresh and log in.");
-      return;
-    }
+            if (type === 'idle') {
+                statusIcon.innerHTML = '<i class="fa-solid fa-rotate text-xl text-slate-500"></i>';
+                statusTitle.textContent = title;
+            } else if (type === 'loading') {
+                statusIcon.innerHTML = '<div class="w-6 h-6 border-2 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div>';
+                statusTitle.textContent = title;
+                if (subtitle) {
+                    statusSubtitle.textContent = subtitle;
+                    statusSubtitle.classList.remove('hidden');
+                }
+            } else if (type === 'error') {
+                statusIcon.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-xl text-amber-500"></i>';
+                statusTitle.textContent = title;
+                if (subtitle) {
+                    statusSubtitle.textContent = subtitle;
+                    statusSubtitle.classList.remove('hidden');
+                }
+                retryBtn.classList.remove('hidden');
+            }
+        }
 
-    const status = document.querySelector('input[name="status"]:checked');
-    if (!status) return alert("Please select a status.");
+        async function fetchMetabaseData(sku) {
+            // Build Metabase parameters query JSON string
+            const paramObj = [
+                {
+                    type: "category",
+                    target: ["variable", ["template-tag", "sku_input"]],
+                    value: sku
+                }
+            ];
+            const paramJson = JSON.stringify(paramObj);
 
-    const row = data[currentIndex];
-    const form = document.createElement('form');
-    form.method = 'POST';
-    form.action = 'https://docs.google.com/forms/d/e/1FAIpQLSdyanOU8V70b9PxJY8mKKe07oeq4JTZ42Lj-DwrVhNR5eVokg/formResponse';
-    form.target = 'hiddenSubmitFrame';
+            // Candidate URLs for Metabase parameter formats
+            const candidateUrls = [
+                `${METABASE_BASE_URL}/public/question/${CARD_UUID}.json?parameters=${encodeURIComponent(paramJson)}`,
+                `${METABASE_BASE_URL}/public/question/${CARD_UUID}.json?sku_input=${encodeURIComponent(sku)}`,
+                `${METABASE_BASE_URL}/api/public/card/${CARD_UUID}/query?parameters=${encodeURIComponent(paramJson)}`,
+                `${METABASE_BASE_URL}/public/question/${CARD_UUID}.json?sku_id=${encodeURIComponent(sku)}`
+            ];
 
-    const fields = [
-      { name: 'entry.331138758', value: row["image_id"] },
-      { name: 'entry.921407097', value: row["sku_id"] },
-      { name: 'entry.2036611691', value: status.value },
-      { name: 'entry.1651774948', value: userEmail }  // Email field
-    ];
+            for (const targetUrl of candidateUrls) {
+                // 1. Direct fetch
+                try {
+                    const res = await fetch(targetUrl);
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data) return data;
+                    }
+                } catch (e) {
+                    console.warn("Direct fetch failed, trying CORS proxies...", targetUrl, e);
+                }
 
-    fields.forEach(({ name, value }) => {
-      const input = document.createElement('input');
-      input.type = 'hidden';
-      input.name = name;
-      input.value = value;
-      form.appendChild(input);
-    });
+                // 2. Corsproxy.io proxy fallback
+                try {
+                    const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+                    const res = await fetch(proxyUrl);
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data) return data;
+                    }
+                } catch (e) {
+                    console.warn("Corsproxy fallback failed...", proxyUrl, e);
+                }
 
-    document.body.appendChild(form);
-    form.submit();
-    document.body.removeChild(form);
+                // 3. Allorigins proxy fallback
+                try {
+                    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
+                    const res = await fetch(proxyUrl);
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data) return data;
+                    }
+                } catch (e) {
+                    console.warn("Allorigins fallback failed...", proxyUrl, e);
+                }
+            }
 
-    currentIndex++;
-    showImage();
-    document.querySelectorAll('input[name="status"]').forEach(el => el.checked = false);
-  }
+            return null;
+        }
 
-  function preloadNextImages() {
-    for (let i = 1; i <= 3; i++) {
-      if (currentIndex + i < data.length) {
-        const nextRow = data[currentIndex + i];
-        new Image().src = nextRow["input_image_hres_url"];
-        new Image().src = nextRow["output_image_hres_url"];
-      }
-    }
-  }
+        async function runQueryAndFetchSpin() {
+            const sku = skuInput.value.trim();
+            if (!sku) {
+                setStatus('idle', 'Please enter a valid SKU Input');
+                urlBanner.classList.add('hidden');
+                return;
+            }
 
-  document.addEventListener("keydown", function(event) {
-    const key = event.key.toLowerCase();
-    const code = event.code;
+            // Hide iframe and show querying state
+            spinIframe.classList.add('hidden');
+            spinIframe.src = 'about:blank';
+            urlBanner.classList.add('hidden');
 
-    if (key === "1" || key === "d" || code === "Numpad1") {
-      document.querySelector('input[value="Done"]').checked = true;
-    } else if (key === "2" || key === "c" || code === "Numpad2") {
-      document.querySelector('input[value="Cropped"]').checked = true;
-    } else if (key === "3" || key === "m" || code === "Numpad3") {
-      document.querySelector('input[value="Marketing Material"]').checked = true;
-    } else if (key === "4" || key === "b" || code === "Numpad4") {
-      document.querySelector('input[value="Banner"]').checked = true;
-    } else if (key === "5" || key === "v" || code === "Numpad5") {
-      document.querySelector('input[value="Vehicle Overlapped"]').checked = true;
-    } else if (key === "6" || key === "e" || code === "Numpad6") {
-      document.querySelector('input[value="Editing"]').checked = true;
-    } else if (key === "enter") {
-      event.preventDefault();
-      submitForm();
-    }
-  });
-</script>
+            updateUrlParam(sku);
 
+            // Direct URL Input
+            if (sku.startsWith('http://') || sku.startsWith('https://') || sku.includes('assets.spyne.ai')) {
+                const directUrl = sku.startsWith('http') ? sku : `https://${sku}`;
+                showSpinUrlBanner(directUrl);
+                setStatus('loading', 'Loading 360° Spin viewer...', directUrl);
+                spinIframe.src = directUrl;
+                spinIframe.classList.remove('hidden');
+                return;
+            }
+
+            // Direct Media ID Input (24-character hex ID, e.g. 69847cb268ed57c8088c38c5)
+            if (/^[a-fA-F0-9]{24}$/.test(sku)) {
+                const constructedUrl = `https://assets.spyne.ai/360?version=v3&mediaId=${sku}&spin=1`;
+                showSpinUrlBanner(constructedUrl);
+                setStatus('loading', 'Loading 360° Spin viewer...', constructedUrl);
+                spinIframe.src = constructedUrl;
+                spinIframe.classList.remove('hidden');
+                return;
+            }
+
+            // Query Metabase backend for SKU Input to retrieve spin_url
+            setStatus('loading', 'Executing query on backend...', `Running Metabase query for SKU: ${sku}`);
+
+            try {
+                const data = await fetchMetabaseData(sku);
+                const spinUrl = extractSpinUrl(data);
+
+                if (!spinUrl) {
+                    setStatus('error', `No 360 spin URL found for "${sku}"`, 'The query completed but returned no matching spin URL for this SKU Input.');
+                    return;
+                }
+
+                showSpinUrlBanner(spinUrl);
+                setStatus('loading', 'Opening 360° Spin URL...', spinUrl);
+                spinIframe.src = spinUrl;
+                spinIframe.classList.remove('hidden');
+
+            } catch (err) {
+                console.warn("Query failed:", err);
+                setStatus('error', `Unable to fetch spin URL for "${sku}"`, err.message || 'Network error');
+            }
+        }
+
+        function extractSpinUrl(data) {
+            if (!data) return null;
+
+            // 1. Array of objects (from .json endpoints)
+            if (Array.isArray(data) && data.length > 0) {
+                for (const row of data) {
+                    if (typeof row === 'object' && row !== null) {
+                        for (const key of ['spin_url', 'spin_link', 'url', 'spin', '360_url', 'iframe_url', 'link']) {
+                            if (row[key] && typeof row[key] === 'string' && row[key].startsWith('http')) {
+                                return row[key].trim();
+                            }
+                        }
+                        if (row.mediaId || row.media_id) {
+                            const mId = row.mediaId || row.media_id;
+                            return `https://assets.spyne.ai/360?version=v3&mediaId=${mId}&spin=1`;
+                        }
+                    } else if (typeof row === 'string' && row.startsWith('http')) {
+                        return row.trim();
+                    }
+                }
+            }
+
+            // 2. Metabase Card Query structure { data: { rows: [[...]], cols: [...] } }
+            if (data.data && Array.isArray(data.data.rows) && data.data.rows.length > 0) {
+                const firstRow = data.data.rows[0];
+                if (Array.isArray(firstRow)) {
+                    if (Array.isArray(data.data.cols)) {
+                        const spinColIdx = data.data.cols.findIndex(c => c.name && c.name.toLowerCase().includes('spin'));
+                        if (spinColIdx !== -1 && firstRow[spinColIdx]) {
+                            return String(firstRow[spinColIdx]).trim();
+                        }
+                        const mediaColIdx = data.data.cols.findIndex(c => c.name && c.name.toLowerCase().includes('media'));
+                        if (mediaColIdx !== -1 && firstRow[mediaColIdx]) {
+                            return `https://assets.spyne.ai/360?version=v3&mediaId=${firstRow[mediaColIdx]}&spin=1`;
+                        }
+                    }
+                    for (const cell of firstRow) {
+                        if (typeof cell === 'string' && (cell.startsWith('http://') || cell.startsWith('https://'))) {
+                            return cell.trim();
+                        }
+                    }
+                }
+            }
+
+            // 3. Direct Object
+            if (typeof data === 'object') {
+                for (const key of ['spin_url', 'spin_link', 'url', 'spin', '360_url']) {
+                    if (data[key] && typeof data[key] === 'string' && data[key].startsWith('http')) {
+                        return data[key].trim();
+                    }
+                }
+                if (data.mediaId || data.media_id) {
+                    return `https://assets.spyne.ai/360?version=v3&mediaId=${data.mediaId || data.media_id}&spin=1`;
+                }
+            }
+
+            return null;
+        }
+
+        function showSpinUrlBanner(url) {
+            currentFetchedUrl = url;
+            spinUrlLink.href = url;
+            spinUrlLink.textContent = url;
+            openTabBtn.href = url;
+            urlBanner.classList.remove('hidden');
+        }
+
+        function copySpinUrl() {
+            if (!currentFetchedUrl) return;
+            
+            const dummy = document.createElement('textarea');
+            document.body.appendChild(dummy);
+            dummy.value = currentFetchedUrl;
+            dummy.select();
+            
+            try {
+                document.execCommand('copy');
+                const copyBtn = document.getElementById('copyBtn');
+                copyBtn.innerHTML = '<i class="fa-solid fa-check text-[11px] text-emerald-400"></i><span class="hidden sm:inline text-emerald-400">Copied!</span>';
+                setTimeout(() => {
+                    copyBtn.innerHTML = '<i class="fa-regular fa-copy text-[11px]"></i><span class="hidden sm:inline">Copy</span>';
+                }, 2000);
+            } catch (e) {
+                console.error('Failed to copy text', e);
+            } finally {
+                document.body.removeChild(dummy);
+            }
+        }
+
+        function handleIframeLoad() {
+            if (spinIframe.src && spinIframe.src !== 'about:blank') {
+                statusState.classList.add('hidden');
+            }
+        }
+
+        function updateUrlParam(sku) {
+            try {
+                if (window.location.protocol !== 'blob:' && window.location.href.startsWith('http')) {
+                    const currentUrl = new URL(window.location.href);
+                    currentUrl.searchParams.set('sku_input', sku);
+                    window.history.replaceState({}, '', currentUrl);
+                }
+            } catch (err) {
+                console.warn('Unable to update address bar:', err);
+            }
+        }
+    </script>
 </body>
 </html>
