@@ -8,9 +8,19 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'SKU parameter is required' });
   }
 
-  // 2. Metabase Details (Notice the .json extension to get raw data instead of an HTML page)
+  // 2. Metabase Details
   const CARD_UUID = "4584f6d4-0394-4c30-ae53-dbbc1acfb88c";
-  const METABASE_URL = `https://metabase.spyne.ai/public/question/${CARD_UUID}.json?sku_input=${encodeURIComponent(sku)}`;
+  
+  // Metabase's .json export endpoint requires parameters to be passed as a stringified JSON array
+  const metabaseParams = [
+    {
+      type: "category",
+      target: ["variable", ["template-tag", "sku_input"]],
+      value: String(sku)
+    }
+  ];
+  
+  const METABASE_URL = `https://metabase.spyne.ai/public/question/${CARD_UUID}.json?parameters=${encodeURIComponent(JSON.stringify(metabaseParams))}`;
 
   try {
     // 3. Fetch data using modern Node 18 fetch (Available standard in Vercel)
