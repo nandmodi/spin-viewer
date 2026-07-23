@@ -197,7 +197,7 @@
         }
 
         async function fetchMetabaseData(sku) {
-            // Build Metabase parameters query JSON string
+            // Build Metabase parameters query JSON payload
             const paramObj = [
                 {
                     type: "category",
@@ -207,49 +207,85 @@
             ];
             const paramJson = JSON.stringify(paramObj);
 
-            // Candidate URLs for Metabase parameter formats
+            // 1. Try POST requests (Direct & Proxy)
+            const postUrl = `${METABASE_BASE_URL}/api/public/card/${CARD_UUID}/query`;
+            
+            try {
+                const postRes = await fetch(postUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ parameters: paramObj })
+                });
+                if (postRes.ok) {
+                    const data = await postRes.json();
+                    if (data) return data;
+                }
+            } catch (e) {
+                console.warn("Direct POST failed, trying proxy...", e);
+            }
+
+            try {
+                const proxyPostUrl = `https://corsproxy.io/?${encodeURIComponent(postUrl)}`;
+                const postRes = await fetch(proxyPostUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ parameters: paramObj })
+                });
+                if (postRes.ok) {
+                    const data = await postRes.json();
+                    if (data) return data;
+                }
+            } catch (e) {
+                console.warn("Proxy POST failed...", e);
+            }
+
+            // 2. Candidate GET URLs
             const candidateUrls = [
                 `${METABASE_BASE_URL}/public/question/${CARD_UUID}.json?parameters=${encodeURIComponent(paramJson)}`,
                 `${METABASE_BASE_URL}/public/question/${CARD_UUID}.json?sku_input=${encodeURIComponent(sku)}`,
-                `${METABASE_BASE_URL}/api/public/card/${CARD_UUID}/query?parameters=${encodeURIComponent(paramJson)}`,
-                `${METABASE_BASE_URL}/public/question/${CARD_UUID}.json?sku_id=${encodeURIComponent(sku)}`
+                `${METABASE_BASE_URL}/api/public/card/${CARD_UUID}/query?parameters=${encodeURIComponent(paramJson)}`
             ];
 
+            // Multi-proxy fallback strategy for GitHub Pages & Vercel deployment
             for (const targetUrl of candidateUrls) {
-                // 1. Direct fetch
+                // Direct fetch
                 try {
                     const res = await fetch(targetUrl);
                     if (res.ok) {
                         const data = await res.json();
                         if (data) return data;
                     }
-                } catch (e) {
-                    console.warn("Direct fetch failed, trying CORS proxies...", targetUrl, e);
-                }
+                } catch (e) {}
 
-                // 2. Corsproxy.io proxy fallback
+                // Corsproxy.io proxy
                 try {
-                    const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
-                    const res = await fetch(proxyUrl);
+                    const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(targetUrl)}`);
                     if (res.ok) {
                         const data = await res.json();
                         if (data) return data;
                     }
-                } catch (e) {
-                    console.warn("Corsproxy fallback failed...", proxyUrl, e);
-                }
+                } catch (e) {}
 
-                // 3. Allorigins proxy fallback
+                // AllOrigins proxy
                 try {
-                    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
-                    const res = await fetch(proxyUrl);
+                    const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`);
+                    if (res.ok) {
+                        const json = await res.json();
+                        if (json && json.contents) {
+                            const data = typeof json.contents === 'string' ? JSON.parse(json.contents) : json.contents;
+                            if (data) return data;
+                        }
+                    }
+                } catch (e) {}
+
+                // Codetabs proxy
+                try {
+                    const res = await fetch(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`);
                     if (res.ok) {
                         const data = await res.json();
                         if (data) return data;
                     }
-                } catch (e) {
-                    console.warn("Allorigins fallback failed...", proxyUrl, e);
-                }
+                } catch (e) {}
             }
 
             return null;
@@ -309,7 +345,7 @@
 
             } catch (err) {
                 console.warn("Query failed:", err);
-                setStatus('error', `Unable to fetch spin URL for "${sku}"`, err.message || 'Network error');
+                setStatus('error', `Unable to fetch spin URL for "${sku}"`, 'CORS/Network restriction encountered on hosted domain. Try entering the 24-character Media ID or direct Spin URL.');
             }
         }
 
