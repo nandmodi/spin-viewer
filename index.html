@@ -197,98 +197,116 @@
         }
 
         async function fetchMetabaseData(sku) {
-            // Build Metabase parameters query JSON payload
-            const paramObj = [
+            // Build Metabase parameters query JSON payloads for both sku_input and sku_id
+            const paramObjSkuInput = [
                 {
                     type: "category",
                     target: ["variable", ["template-tag", "sku_input"]],
                     value: sku
                 }
             ];
-            const paramJson = JSON.stringify(paramObj);
-
-            // 1. Try POST requests (Direct & Proxy)
-            const postUrl = `${METABASE_BASE_URL}/api/public/card/${CARD_UUID}/query`;
-            
-            try {
-                const postRes = await fetch(postUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ parameters: paramObj })
-                });
-                if (postRes.ok) {
-                    const data = await postRes.json();
-                    if (data) return data;
+            const paramObjSkuId = [
+                {
+                    type: "category",
+                    target: ["variable", ["template-tag", "sku_id"]],
+                    value: sku
                 }
-            } catch (e) {
-                console.warn("Direct POST failed, trying proxy...", e);
-            }
-
-            try {
-                const proxyPostUrl = `https://corsproxy.io/?${encodeURIComponent(postUrl)}`;
-                const postRes = await fetch(proxyPostUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ parameters: paramObj })
-                });
-                if (postRes.ok) {
-                    const data = await postRes.json();
-                    if (data) return data;
-                }
-            } catch (e) {
-                console.warn("Proxy POST failed...", e);
-            }
-
-            // 2. Candidate GET URLs
-            const candidateUrls = [
-                `${METABASE_BASE_URL}/public/question/${CARD_UUID}.json?parameters=${encodeURIComponent(paramJson)}`,
-                `${METABASE_BASE_URL}/public/question/${CARD_UUID}.json?sku_input=${encodeURIComponent(sku)}`,
-                `${METABASE_BASE_URL}/api/public/card/${CARD_UUID}/query?parameters=${encodeURIComponent(paramJson)}`
             ];
 
-            // Multi-proxy fallback strategy for GitHub Pages & Vercel deployment
-            for (const targetUrl of candidateUrls) {
-                // Direct fetch
-                try {
-                    const res = await fetch(targetUrl);
-                    if (res.ok) {
-                        const data = await res.json();
-                        if (data) return data;
-                    }
-                } catch (e) {}
+            const postUrl = `${METABASE_BASE_URL}/api/public/card/${CARD_UUID}/query`;
+            const getJsonUrlSkuInput = `${METABASE_BASE_URL}/public/question/${CARD_UUID}.json?parameters=${encodeURIComponent(JSON.stringify(paramObjSkuInput))}`;
+            const getJsonUrlSkuId = `${METABASE_BASE_URL}/public/question/${CARD_UUID}.json?parameters=${encodeURIComponent(JSON.stringify(paramObjSkuId))}`;
 
-                // Corsproxy.io proxy
-                try {
-                    const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(targetUrl)}`);
-                    if (res.ok) {
-                        const data = await res.json();
-                        if (data) return data;
-                    }
-                } catch (e) {}
-
-                // AllOrigins proxy
-                try {
-                    const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`);
-                    if (res.ok) {
-                        const json = await res.json();
-                        if (json && json.contents) {
-                            const data = typeof json.contents === 'string' ? JSON.parse(json.contents) : json.contents;
-                            if (data) return data;
-                        }
-                    }
-                } catch (e) {}
-
-                // Codetabs proxy
-                try {
-                    const res = await fetch(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`);
-                    if (res.ok) {
-                        const data = await res.json();
-                        if (data) return data;
-                    }
-                } catch (e) {}
+            // Helper to check if payload contains non-empty rows or valid spin url
+            function hasDataRows(data) {
+                if (!data) return false;
+                if (Array.isArray(data) && data.length > 0) return true;
+                if (data.data && Array.isArray(data.data.rows) && data.data.rows.length > 0) return true;
+                if (typeof data === 'object' && extractSpinUrl(data) !== null) return true;
+                return false;
             }
 
-            return null;
+            // Helper for fast fetch with short timeout (2.5s) and valid row checking
+            async function quickFetch(url, options = {}, ms = 2500) {
+                const controller = new AbortController();
+                const id = setTimeout(() => controller.abort(), ms);
+                try {
+                    const response = await fetch(url, { ...options, signal: controller.signal });
+                    clearTimeout(id);
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    const data = await response.json();
+                    if (data && hasDataRows(data)) return data;
+                    throw new Error("Empty or zero-row response");
+                } catch (err) {
+                    clearTimeout(id);
+                    throw err;
+                }
+            }
+
+            // Helper for AllOrigins JSON wrapper parsing
+            async function quickFetchAllOrigins(targetUrl, ms = 2500) {
+                const json = await quickFetch(`https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`, {}, ms);
+                if (json && json.contents) {
+                    const data = typeof json.contents === 'string' ? JSON.parse(json.contents) : json.contents;
+                    if (data && hasDataRows(data)) return data;
+                }
+                throw new Error("Invalid AllOrigins payload");
+            }
+
+            // Fire ALL requests concurrently in parallel and return as soon as the FASTEST one with valid data succeeds
+            const candidatePromises = [
+                // 1. Direct POST queries
+                quickFetch(postUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ parameters: paramObjSkuInput })
+                }),
+                quickFetch(postUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ parameters: paramObjSkuId })
+                }),
+
+                // 2. Corsproxy POST
+                quickFetch(`https://corsproxy.io/?${encodeURIComponent(postUrl)}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ parameters: paramObjSkuInput })
+                }),
+
+                // 3. Direct GET queries
+                quickFetch(getJsonUrlSkuInput),
+                quickFetch(getJsonUrlSkuId),
+
+                // 4. Corsproxy GET queries
+                quickFetch(`https://corsproxy.io/?${encodeURIComponent(getJsonUrlSkuInput)}`),
+                quickFetch(`https://corsproxy.io/?${encodeURIComponent(getJsonUrlSkuId)}`),
+
+                // 5. AllOrigins RAW GET query
+                quickFetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(getJsonUrlSkuInput)}`),
+
+                // 6. AllOrigins Wrapped GET query
+                quickFetchAllOrigins(getJsonUrlSkuInput)
+            ];
+
+            try {
+                if (Promise.any) {
+                    return await Promise.any(candidatePromises);
+                } else {
+                    return await new Promise((resolve, reject) => {
+                        let failedCount = 0;
+                        candidatePromises.forEach(p => {
+                            p.then(resolve).catch(() => {
+                                failedCount++;
+                                if (failedCount === candidatePromises.length) reject(new Error("All parallel requests failed"));
+                            });
+                        });
+                    });
+                }
+            } catch (err) {
+                console.warn("Parallel fetch completed with no successful response:", err);
+                return null;
+            }
         }
 
         async function runQueryAndFetchSpin() {
@@ -378,16 +396,26 @@
                     if (Array.isArray(data.data.cols)) {
                         const spinColIdx = data.data.cols.findIndex(c => c.name && c.name.toLowerCase().includes('spin'));
                         if (spinColIdx !== -1 && firstRow[spinColIdx]) {
-                            return String(firstRow[spinColIdx]).trim();
+                            const val = String(firstRow[spinColIdx]).trim();
+                            if (val.startsWith('http')) return val;
                         }
-                        const mediaColIdx = data.data.cols.findIndex(c => c.name && c.name.toLowerCase().includes('media'));
+                        const mediaColIdx = data.data.cols.findIndex(c => c.name && (c.name.toLowerCase().includes('media') || c.name.toLowerCase().includes('id')));
                         if (mediaColIdx !== -1 && firstRow[mediaColIdx]) {
-                            return `https://assets.spyne.ai/360?version=v3&mediaId=${firstRow[mediaColIdx]}&spin=1`;
+                            const val = String(firstRow[mediaColIdx]).trim();
+                            if (val.length === 24) {
+                                return `https://assets.spyne.ai/360?version=v3&mediaId=${val}&spin=1`;
+                            }
                         }
                     }
                     for (const cell of firstRow) {
-                        if (typeof cell === 'string' && (cell.startsWith('http://') || cell.startsWith('https://'))) {
-                            return cell.trim();
+                        if (typeof cell === 'string') {
+                            const val = cell.trim();
+                            if (val.startsWith('http://') || val.startsWith('https://')) {
+                                return val;
+                            }
+                            if (/^[a-fA-F0-9]{24}$/.test(val)) {
+                                return `https://assets.spyne.ai/360?version=v3&mediaId=${val}&spin=1`;
+                            }
                         }
                     }
                 }
