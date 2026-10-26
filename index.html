@@ -235,7 +235,9 @@
             try {
                 // We call the serverless function we created in /api/fetch-spin.js
                 // This request is internal (same domain), so the browser doesn't block it with CORS!
-                const res = await fetch(`/api/fetch-spin?sku=${encodeURIComponent(sku)}`);
+                // GitHub Pages can't run the function, so that copy uses the Vercel one.
+                const apiBase = location.hostname.endsWith('github.io') ? 'https://spin-viewer.vercel.app' : '';
+                const res = await fetch(`${apiBase}/api/fetch-spin?sku=${encodeURIComponent(sku)}`);
                 
                 if (!res.ok) {
                     throw new Error(`Server returned HTTP ${res.status}`);
